@@ -23,7 +23,6 @@ set(headers
 
 set(sources
     collator.cpp
-    collator.mm
     collator_blue.cpp
     formatters.cpp
     localization.cpp
@@ -34,6 +33,10 @@ set(sources
     WrapPointList.cpp
     WrapPointList_Blue.cpp
 )
+
+if(APPLE)
+    list(APPEND sources collator.mm)
+endif()
 
 ccp_add_library(EveLocalization SHARED
     ${headers}
@@ -63,6 +66,20 @@ if(APPLE)
 elseif(WIN32)
 
     target_link_libraries(EveLocalization PRIVATE usp10)
+
+elseif(LINUX)
+
+    # ICU provides locale-aware collation, number separators and line breaking on Linux,
+    # mirroring what CoreFoundation provides on macOS and Win32/Uniscribe provide on Windows.
+    find_package(ICU REQUIRED COMPONENTS uc i18n data)
+    target_link_libraries(EveLocalization PRIVATE ICU::i18n ICU::uc ICU::data)
+
+    set_target_properties(
+        EveLocalization
+        PROPERTIES
+            PREFIX ""
+            SUFFIX ".so"
+    )
 
 endif()
 
@@ -99,7 +116,7 @@ if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
 
             if(WIN32)
                 set_tests_properties(${PYTHON_TEST} PROPERTIES ENVIRONMENT "PYTHONPATH=${PYTHONPATH}\;${CMAKE_CURRENT_SOURCE_DIR}/python;BUILDFLAVOR=$<LOWER_CASE:$<CONFIG>>")
-            elseif(APPLE)
+            elseif(APPLE OR LINUX)
                 set_tests_properties(${PYTHON_TEST} PROPERTIES ENVIRONMENT "PYTHONPATH=${PYTHONPATH}:${CMAKE_CURRENT_SOURCE_DIR}/python;BUILDFLAVOR=$<LOWER_CASE:$<CONFIG>>")
             endif()
 

@@ -4,6 +4,11 @@
 
 #include "localization.h"
 
+#if defined( __linux__ )
+#include <memory>
+#include <unicode/brkiter.h>
+#endif
+
 
 BLUE_DEFINE( WrapPointList );
 
@@ -63,6 +68,28 @@ PyObject* PyGetLinebreakPoints( PyObject* self, PyObject* args )
             Py_DECREF( val );
         }
     }
+#elif defined( __linux__ )
+	// ICU implements the Unicode line breaking algorithm (UAX #14), which is what
+	// CFStringTokenizer's kCFStringTokenizerUnitLineBreak is built on, on macOS.
+	const icu::UnicodeString& text = wrapPointList->GetText();
+	UErrorCode status = U_ZERO_ERROR;
+	std::unique_ptr<icu::BreakIterator> breakIterator( icu::BreakIterator::createLineInstance( wrapPointList->GetLocale(), status ) );
+	if( U_FAILURE( status ) || !breakIterator )
+	{
+		Py_DECREF( retVal );
+		PyErr_Format( PyExc_SystemError, "Text analysis failed, cannot create line break iterator: %s", u_errorName( status ) );
+		return nullptr;
+	}
+	breakIterator->setText( text );
+
+	// Report break points as offsets into the Python string (code points), skipping the start and
+	// end of the text, as there's no need to break there.
+	for( int32_t pos = breakIterator->next(); pos != icu::BreakIterator::DONE && pos < text.length(); pos = breakIterator->next() )
+	{
+		PyObject* val = PyLong_FromLong( static_cast<long>( text.countChar32( 0, pos ) ) );
+		PyList_Append( retVal, val );
+		Py_DECREF( val );
+	}
 #endif
 	return retVal;
 }
@@ -175,6 +202,17 @@ PyObject* Py__init__(PyObject *self, PyObject *args)
         PyErr_SetString( PyExc_SystemError, "Text analysis failed, cannot create locale." );
         return nullptr;
     }
+#elif defined( __linux__ )
+	static_assert( sizeof( wchar_t ) == sizeof( UChar32 ), "Expected UTF-32 wchar_t on Linux" );
+	pThis->m_text = icu::UnicodeString::fromUTF32( reinterpret_cast<const UChar32*>( textStr ), static_cast<int32_t>( textLength ) );
+	pThis->m_locale = icu::Locale( LanguageIDToLocaleName( CodeToLanguageID( langStr ) ) );
+	if( pThis->m_text.isBogus() || pThis->m_locale.isBogus() )
+	{
+		PyMem_Free( textStr );
+		PyErr_SetString( PyExc_SystemError, "Text analysis failed, cannot convert text or locale." );
+		return nullptr;
+	}
+	PyMem_Free( textStr );
 #endif
 	Py_RETURN_NONE;
 };
