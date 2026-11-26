@@ -8,6 +8,11 @@
 
 #include "parser.h"
 
+#if defined( __linux__ )
+#include <unicode/dcfmtsym.h>
+#include <unicode/locid.h>
+#endif
+
 const char* g_moduleName = "_evelocalization";
 LocalizationSettings g_settings;
 
@@ -157,6 +162,52 @@ bool Language::SetNumberSeparators(LanguageID langID)
     CFRelease( locale );
 
 	return retVal;
+
+#elif defined( __linux__ )
+
+	// Use ICU rather than std::locale/localeconv, as the glibc implementation depends
+	// on which locales happen to be installed on the host system.
+	const icu::Locale locale = ( langID == LANGUAGEID_SYSTEM_DEFAULT ) ? icu::Locale::getDefault() : icu::Locale( LanguageIDToLocaleName( langID ) );
+
+	UErrorCode status = U_ZERO_ERROR;
+	icu::DecimalFormatSymbols symbols( locale, status );
+	if( U_FAILURE( status ) )
+	{
+		CCP_LOGWARN( "Localization failed to get number symbols for %s (%s). Falling back to default setting.", locale.getName(), u_errorName( status ) );
+		return false;
+	}
+
+	const icu::UnicodeString& decimal = symbols.getConstSymbol( icu::DecimalFormatSymbols::kDecimalSeparatorSymbol );
+	const icu::UnicodeString& grouping = symbols.getConstSymbol( icu::DecimalFormatSymbols::kGroupingSeparatorSymbol );
+
+	// Note that we are only supporting a single character as grouping and decimal symbol.
+	if( decimal.isEmpty() )
+	{
+		CCP_LOGWARN( "Localization failed to get decimal char. Falling back to default setting." );
+		return false;
+	}
+	if( grouping.isEmpty() )
+	{
+		CCP_LOGWARN( "Localization failed to get thousands char. Falling back to default setting." );
+		return false;
+	}
+
+	decimalSep = static_cast<wchar_t>( decimal.char32At( 0 ) );
+	thousandSep = static_cast<wchar_t>( grouping.char32At( 0 ) );
+
+	// Some locales (e.g. French) use a narrow non-breaking space as the grouping separator,
+	// which we don't have a glyph for in our font. Use a "normal" non-breaking space instead,
+	// matching the macOS implementation.
+	if( thousandSep == L'\x202f' )
+	{
+		thousandSep = L'\xa0';
+	}
+
+	return true;
+
+#else
+
+	return false;
 
 #endif
 

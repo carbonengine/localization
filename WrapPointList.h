@@ -5,6 +5,11 @@
 
 #include "localization.h"
 
+#if defined( __linux__ )
+#include <unicode/locid.h>
+#include <unicode/unistr.h>
+#endif
+
 #ifdef _WIN32
 // -------------------------------------------------------------
 // Description:
@@ -48,6 +53,15 @@ public:
     {
         return m_coreLocale;
     }
+#elif defined( __linux__ )
+	const icu::UnicodeString& GetText() const
+	{
+		return m_text;
+	}
+	const icu::Locale& GetLocale() const
+	{
+		return m_locale;
+	}
 #endif
 
 	friend PyObject* Py__init__(PyObject *self, PyObject *args);
@@ -73,6 +87,9 @@ private:
 #elif defined(__APPLE__)
     AutoReleaseCF<CFStringRef> m_coreString;
     AutoReleaseCF<CFLocaleRef> m_coreLocale;
+#elif defined( __linux__ )
+	icu::UnicodeString m_text;
+	icu::Locale m_locale;
 #endif
 };
 TYPEDEF_BLUECLASS( WrapPointList );

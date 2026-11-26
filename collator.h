@@ -8,6 +8,9 @@
 
 #if __APPLE__
 #import "Foundation/NSLocale.h"
+#elif defined( __linux__ )
+#include <memory>
+#include <unicode/coll.h>
 #endif
 
 // -------------------------------------------------------------
@@ -45,6 +48,10 @@ private:
 #if __APPLE__
 	NSLocale* m_locale = nullptr;
 	NSString* m_localeName = nullptr;
+#elif defined( __linux__ )
+	// ICU collator configured to match the macOS implementation
+	// (case-insensitive, numeric-aware, locale-sensitive comparison).
+	std::shared_ptr<icu::Collator> m_collator;
 #else
     std::locale m_locale;
 #endif
